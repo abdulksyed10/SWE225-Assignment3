@@ -1,4 +1,5 @@
 DEV/
+inverted_index.json
 
 # Environments
 .env
