@@ -1,6 +1,7 @@
 DEV/
 inverted_index.json
-
+final_inverted_index.json
+partial_indexes/
 # Environments
 .env
 .venv
