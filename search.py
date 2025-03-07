@@ -10,11 +10,8 @@ MERGED_INDEX_FILE = "final_inverted_index.json"
 nltk.download('punkt')
 stemmer = PorterStemmer()
 
-# Load the index once into memory (faster search)
-print("🔄 Loading inverted index into memory...")
 with open(MERGED_INDEX_FILE, "r", encoding="utf-8") as f:
     inverted_index = json.load(f)
-print("✅ Index loaded successfully!")
 
 def preprocess_query(query):
     """ Tokenizes and stems the query for better matching. """

@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from collections import defaultdict
 from nltk.stem import PorterStemmer
 from tqdm import tqdm
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse, urljoin
 
 nltk.download('punkt')
 
@@ -97,36 +97,60 @@ def build_index():
                 file_path = os.path.join(folder_path, file)
                 if not file.endswith(".json"):
                     continue
-                
+
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    url = normalize_url(data.get("url", file))  
-                    print(f"📝 Extracted URL from JSON: {data.get('url', file)} (From file: {file_path})")
+                    url = data.get("url", file)
                     html_content = data.get("content", "")
 
                     # Parse HTML and extract text
                     soup = BeautifulSoup(html_content, "html.parser")
-                    title = soup.title.string if soup.title else ""
-                    headings = " ".join([h.text for h in soup.find_all(["h1", "h2", "h3"])])
-                    bold_text = " ".join([b.text for b in soup.find_all(["b", "strong"])])
-                    body_text = soup.get_text()
 
-                    full_text = f"{title} {headings} {bold_text} {body_text}"
+                    # Extract only valid href URLs, convert relative URLs to absolute, and filter out non-http(s) links
+                    href_urls = []
+                    for a_tag in soup.find_all("a", href=True):
+                        href = a_tag.get("href")
+                        if href and (href.startswith("http") or href.startswith("/")) and 'YOUR_IP' not in href:
+                            try:
+                                # Convert relative URLs to absolute
+                                absolute_url = urljoin(data.get("url", ""), href)
+                                # Normalize and add to list if valid
+                                href_urls.append(normalize_url(absolute_url))
+                            except ValueError:
+                                # Skip URLs causing ValueError
+                                print(f"⚠️ Skipping invalid URL: {href}")
+                                continue
 
-                    # Compute content hash to detect duplicates
-                    doc_hash = compute_hash(full_text)
+                    # Use the first valid href URL as the main URL if available, otherwise fallback
+                    url = href_urls[0] if href_urls else normalize_url(url)
 
+                    # Extract and weigh different text sections
+                    title = soup.title.string if soup.title and soup.title.string else ""
+                    h1 = " ".join([h.get_text() for h in soup.find_all("h1")])
+                    h2 = " ".join([h.get_text() for h in soup.find_all("h2")])
+                    h3 = " ".join([h.get_text() for h in soup.find_all("h3")])
+                    bold_text = " ".join([b.get_text() for b in soup.find_all(["b", "strong"])])
+                    body_text = " ".join([p.get_text() for p in soup.find_all("p")])
+
+                    # Weighted text
+                    weighted_text = (
+                        " ".join([title] * 5) + " " +
+                        " ".join([h1] * 3) + " " +
+                        " ".join([h2] * round(2.5)) + " " +
+                        " ".join([h3] * 2) + " " +
+                        " ".join([bold_text] * round(1.5)) + " " +
+                        body_text
+                    )
+
+                    doc_hash = compute_hash(weighted_text)
                     if doc_hash in processed_hashes:
-                        print(f"Skipping duplicate page: {url}")
-                        continue  
+                        continue
 
                     processed_hashes.add(doc_hash)
 
-                    tokens = preprocess_text(full_text)
+                    tokens = preprocess_text(weighted_text)
                     doc_count += 1
                     unique_terms = set()
-
-                    # ✅ Removed Anchor Text Indexing Here
 
                     for token in tokens:
                         inverted_index[token][url] += 1
@@ -135,15 +159,13 @@ def build_index():
                     for term in unique_terms:
                         doc_freq[term] += 1
 
-                    # Offload partial index to disk every 1000 documents
                     if doc_count % DOCS_PER_PARTIAL_INDEX == 0:
                         save_partial_index(inverted_index, partial_index_counter)
-                        inverted_index.clear()  # Clear memory
+                        inverted_index.clear()
                         partial_index_counter += 1
 
                     pbar.update(1)
 
-    # Save remaining index if any documents left
     if inverted_index:
         save_partial_index(inverted_index, partial_index_counter)
 
@@ -151,7 +173,6 @@ def build_index():
     print(f"Indexed {doc_count} unique documents.")
     print(f"Saved {partial_index_counter + 1} partial index files.")
 
-    # Merge partial indexes into the final index
     merge_partial_indexes()
 
 if __name__ == "__main__":
