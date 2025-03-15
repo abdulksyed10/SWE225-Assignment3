@@ -51,7 +51,7 @@ def save_partial_index(partial_index, index_num):
 def merge_partial_indexes():
     final_index = defaultdict(lambda: defaultdict(int))
 
-    print("\nMerging partial indexes...")
+    print("\n Merging partial indexes.")
 
     for file in sorted(os.listdir(INDEX_DIR)):
         if file.startswith("partial_index_") and file.endswith(".json"):
@@ -63,7 +63,7 @@ def merge_partial_indexes():
                         final_index[term][doc_id] += tf  # Merge TF counts
 
     # Compute TF-IDF scores after merging
-    print("Computing TF-IDF scores...")
+    print("Computing TF-IDF scores")
     doc_count = len(set(doc for postings in final_index.values() for doc in postings))
     for term, doc_dict in final_index.items():
         for doc_id, tf in doc_dict.items():
@@ -118,7 +118,7 @@ def build_index():
                                 href_urls.append(normalize_url(absolute_url))
                             except ValueError:
                                 # Skip URLs causing ValueError
-                                print(f"⚠️ Skipping invalid URL: {href}")
+                                print(f" Skipping invalid URL: {href}")
                                 continue
 
                     # Use the first valid href URL as the main URL if available, otherwise fallback
