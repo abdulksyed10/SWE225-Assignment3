@@ -118,7 +118,7 @@ def build_index():
                                 href_urls.append(normalize_url(absolute_url))
                             except ValueError:
                                 # Skip URLs causing ValueError
-                                print(f"⚠️ Skipping invalid URL: {href}")
+                                print(f"Skipping invalid URL: {href}")
                                 continue
 
                     # Use the first valid href URL as the main URL if available, otherwise fallback

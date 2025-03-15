@@ -16,13 +16,13 @@ def count_index_stats():
         for postings in inverted_index.values():
             num_documents.update(postings.keys())  # Add document URLs to set
 
-        print(f"📊 Total Unique Tokens: {num_tokens}")
-        print(f"📂 Total Unique Documents: {len(num_documents)}")
+        print(f"Total Unique Tokens: {num_tokens}")
+        print(f"Total Unique Documents: {len(num_documents)}")
 
     except FileNotFoundError:
-        print(f"❌ Error: {MERGED_INDEX_FILE} not found. Run the indexer first.")
+        print(f"Error: {MERGED_INDEX_FILE} not found. Run the indexer first.")
     except json.JSONDecodeError:
-        print(f"❌ Error: Failed to parse {MERGED_INDEX_FILE}. Ensure it's a valid JSON file.")
+        print(f"Error: Failed to parse {MERGED_INDEX_FILE}. Ensure it's a valid JSON file.")
 
 if __name__ == "__main__":
     count_index_stats()
