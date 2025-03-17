@@ -7,6 +7,7 @@ from nltk.corpus import stopwords
 from collections import defaultdict
 import math
 from difflib import get_close_matches
+from spellchecker import SpellChecker
 
 # Define the index file
 MERGED_INDEX_FILE = "final_inverted_index.json"
@@ -43,16 +44,21 @@ def faculty_boost(doc, query_terms):
 
     # Higher weight for ANY university-related pages (not just UCI)
     if ".edu" in doc:
-        boost += 1.5  # Boost for any university site
+        boost += 1  # Boost for any university site
+    if ".html" in doc:
+        boost -= 0.5
 
     # Give additional boost if the query terms (name) appear in the URL
     for term in query_terms:
         if term in doc.lower():
             boost += 2.0  # Strong boost if the name is in the URL
 
-    # Boost personal pages, for ex ~username/ format used for faculty pages)
     if "/~" in doc:
-        boost += 2.5  # Stronger boost for faculty profile pages
+        url_parts = doc.split("/~")
+        if len(url_parts) > 1:  # Ensure there's a username after "/~"
+            username_part = url_parts[1].split("/")[0].lower()
+            if any(term.lower() == username_part for term in query_terms):
+                boost *= 500  # Apply extra boost ONLY if the username matches a query term
 
     return boost
 
@@ -69,100 +75,66 @@ def proximity_boost(term_positions):
 
     return 1 + (1 / (1 + min_distance))  # Smaller distance = higher boost
 
-def spell_correct(query_terms, index_terms):
-    corrected_terms = []
-    corrections_made = False
 
-    # Attempting to correct the entire phrase while maintaining spaces
-    full_query = " ".join(query_terms)
-    suggested_phrase = get_close_matches(full_query, [" ".join(index_terms)], n=1, cutoff=0.85)
+# Spell Correction using pyspellchecker
+spell = SpellChecker()
+def correct_spelling(query):
+    words = query.split()
+    corrected_words = []
 
-    if suggested_phrase:
-        return suggested_phrase[0].split(), True  # Keep words separate
-
-    # If no phrase match, correct words individually
-    for term in query_terms:
-        if term in index_terms:
-            corrected_terms.append(term)
+    for word in words:
+        # If the word is in the index, it's likely a valid name or term, so don't correct it
+        if word.lower() in inverted_index:
+            corrected_words.append(word)
         else:
-            suggestion = get_close_matches(term, index_terms, n=1, cutoff=0.8)
-            if suggestion:
-                corrected_terms.append(suggestion[0])  # Keep words separate
-                corrections_made = True
-            else:
-                corrected_terms.append(term)
-
-    return corrected_terms, corrections_made
+            correction = spell.correction(word)
+            corrected_words.append(correction if correction else word)  # Keep original if None
+    
+    corrected_query = " ".join(corrected_words)
+    return corrected_query if corrected_query != query else None
 
 def search(query):
     if not inverted_index:
-        print("\n The index is empty. Please ensure the index file is correctly generated.")
-        return
+        return [], 0, None  # Ensure function returns proper values if index is empty
 
     start_time = time.time()
 
+    # Apply spell correction
     query_terms = preprocess_query(query)
-
-    # Applying spell correction
-    corrected_terms, corrections_made = spell_correct(query_terms, inverted_index.keys())
-
-    if corrections_made:
-        corrected_query = " ".join(corrected_terms)
-        print(f"\n Did you mean: {corrected_query}? Searching for corrected term...\n")
-        query_terms = corrected_terms  # Use corrected query
 
     results = defaultdict(float)
     query_vector = defaultdict(float)
 
-    # Computing query term frequencies
+    # Compute query term frequencies
     for term in query_terms:
         query_vector[term] += 1
 
-    # Normaliz query TF
+    # Normalize query TF
     for term in query_vector:
         query_vector[term] = 1 + math.log(query_vector[term])
 
-    # Retrieving relevant documents
+    # Retrieve relevant documents
     for term in query_terms:
         if term in inverted_index:
             doc_count = len(inverted_index[term])
             idf = math.log((len(inverted_index) + 1) / (1 + doc_count))
 
             for doc, info in inverted_index[term].items():
-                # Handle both cases: info as a dictionary or a float (direct TF-IDF value)
                 if isinstance(info, dict):  
                     tfidf_score = query_vector[term] * info["tf"] * idf
-                    proximity_bonus = proximity_boost(info.get("positions", []))  # Apply proximity boost
+                    proximity_bonus = proximity_boost(info.get("positions", []))
                 else:  
-                    tfidf_score = query_vector[term] * info * idf 
-                    proximity_bonus = 1  # No proximity bonus since positions are unavailable
-                
-                # Boosting faculty and research pages
+                    tfidf_score = query_vector[term] * info * idf  
+                    proximity_bonus = 1  
+
                 boost = faculty_boost(doc, query_terms)
                 results[doc] += tfidf_score * boost * proximity_bonus
 
-    # Normalizing scores
+    # Normalize and rank results
     results = normalize_scores(results)
-
-    # Ranking results
     ranked_results = sorted(results.items(), key=lambda x: x[1], reverse=True)
 
     end_time = time.time()
-    elapsed_time = (end_time - start_time) * 1000
+    elapsed_time = (end_time - start_time) * 1000  # Convert to ms
 
-    # Displaying results
-    if ranked_results:
-        print(f"\n Search Results for: \"{query}\"")
-        for i, (doc, score) in enumerate(ranked_results[:10], 1):
-            print(f"{i}. {doc} (Score: {score:.4f})")
-
-        print(f"\n Search completed in {elapsed_time:.2f} ms")
-    else:
-        print(f"\n No results found for \"{query}\".")
-
-if __name__ == "__main__":
-    while True:
-        query = input("\nEnter search query (or type 'exit' to quit): ")
-        if query.lower() == "exit":
-            break
-        search(query)
+    return ranked_results, elapsed_time
