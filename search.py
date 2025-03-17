@@ -62,7 +62,7 @@ def faculty_boost(doc, query_terms):
 
     return boost
 
-# Boosts ranking if query terms appear close together in the document.
+# Boosting ranking if query terms appear close together in the document.
 def proximity_boost(term_positions):
     if not term_positions or len(term_positions) < 2:
         return 1  # No boost if there's only one term
